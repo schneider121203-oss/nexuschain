@@ -1,0 +1,110 @@
+name: NexusChain CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # 1. Build and Lint API Gateway
+  build-api-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: api-gateway/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd api-gateway
+          npm install
+
+      - name: Build TypeScript
+        run: |
+          cd api-gateway
+          npm run build
+
+  # 2. Build Java Balance Service
+  build-balance-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Compile and Test Spring Boot Application
+        run: |
+          cd balance-service
+          mvn clean package -DskipTests
+
+  # 3. Build Go Matching Engine
+  build-matching-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+          cache-dependency-path: matching-service/go.sum
+
+      - name: Download Go modules
+        run: |
+          cd matching-service
+          go mod download
+
+      - name: Build Go binary
+        run: |
+          cd matching-service
+          go build -v -o matching-service .
+
+  # 4. Build Node.js Transaction History Service
+  build-transaction-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: transaction-history/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd transaction-history
+          npm install
+
+  # 5. Build Go Consensus Service
+  build-consensus-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+
+      - name: Build Consensus binary
+        run: |
+          cd consensus-service
+          go build -v -o consensus-service .

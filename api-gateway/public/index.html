@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUSCHAIN // Terminal de Control Distribuido</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: hsl(225, 25%, 9%);
+      --bg-card: hsla(225, 20%, 14%, 0.7);
+      --border-color: hsla(225, 20%, 30%, 0.4);
+      --text-main: hsl(220, 10%, 90%);
+      --text-muted: hsl(220, 10%, 60%);
+      --neon-blue: hsl(190, 100%, 50%);
+      --neon-purple: hsl(270, 95%, 65%);
+      --neon-green: hsl(145, 85%, 50%);
+      --neon-red: hsl(355, 85%, 55%);
+      --glow-blue: 0 0 15px hsla(190, 100%, 50%, 0.35);
+      --glow-purple: 0 0 15px hsla(270, 95%, 65%, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, hsla(270, 95%, 65%, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, hsla(190, 100%, 50%, 0.08) 0%, transparent 40%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Glassmorphism utility */
+    .glass {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    header {
+      padding: 20px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      background: hsla(225, 25%, 8%, 0.5);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+
+    .brand-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-title span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 400;
+      background: var(--border-color);
+      color: var(--neon-blue);
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0;
+      -webkit-text-fill-color: initial;
+    }
+
+    .system-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--neon-green);
+      box-shadow: 0 0 10px var(--neon-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(145, 85, 50, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(145, 85, 50, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(145, 85, 50, 0); }
+    }
+
+    .dashboard {
+      flex: 1;
+      padding: 30px;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 25px;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1200px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .panel:hover {
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+      color: var(--neon-blue);
+      text-shadow: var(--glow-blue);
+    }
+
+    .panel-title.purple {
+      color: var(--neon-purple);
+      text-shadow: var(--glow-purple);
+    }
+
+    /* Form fields */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+    }
+
+    input, select {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px 16px;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--neon-blue);
+      box-shadow: 0 0 10px rgba(190, 100, 50, 0.15);
+    }
+
+    .btn {
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 14px 20px;
+      border-radius: 6px;
+      border: none;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-blue {
+      background: linear-gradient(135deg, var(--neon-blue), hsl(200, 100%, 40%));
+      color: #000;
+      box-shadow: var(--glow-blue);
+    }
+
+    .btn-blue:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px hsla(190, 100%, 50%, 0.6);
+    }
+
+    .btn-purple {
+      background: linear-gradient(135deg, var(--neon-purple), hsl(280, 100%, 50%));
+      color: #fff;
+      box-shadow: var(--glow-purple);
+    }
+
+    .btn-purple:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px hsla(270, 95%, 65%, 0.6);
+    }
+
+    /* Wallet details card */
+    .wallet-card {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .wallet-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .wallet-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+    }
+
+    .balance-display {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--neon-green);
+      text-shadow: 0 0 10px rgba(145, 85, 50, 0.2);
+    }
+
+    /* Order Book visual rendering */
+    .orderbook-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      flex: 1;
+    }
+
+    .orderbook-section {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ob-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 700;
+      padding-bottom: 6px;
+      border-bottom: 1px solid hsla(225, 20%, 30%, 0.2);
+    }
+
+    .ob-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      padding: 6px 0;
+      position: relative;
+      align-items: center;
+    }
+
+    .ob-bar {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      right: 0;
+      z-index: 1;
+      opacity: 0.15;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    .ob-row span {
+      position: relative;
+      z-index: 2;
+    }
+
+    .ob-row.bid { color: var(--neon-green); }
+    .ob-row.bid .ob-bar { background-color: var(--neon-green); }
+    .ob-row.ask { color: var(--neon-red); }
+    .ob-row.ask .ob-bar { background-color: var(--neon-red); }
+
+    /* Logger console */
+    .terminal-console {
+      background-color: rgba(0, 0, 0, 0.65);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      height: 150px;
+      overflow-y: auto;
+      color: hsl(120, 100%, 75%);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+    }
+
+    .console-line {
+      display: flex;
+      gap: 10px;
+    }
+
+    .console-time {
+      color: var(--text-muted);
+    }
+
+    /* Toast notification */
+    #notification-toast {
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      padding: 16px 24px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border-left: 5px solid var(--neon-blue);
+      color: var(--text-main);
+      font-weight: 600;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 100;
+      transform: translateY(150%);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #notification-toast.show {
+      transform: translateY(0);
+    }
+
+    #notification-toast.success { border-left-color: var(--neon-green); }
+    #notification-toast.error { border-left-color: var(--neon-red); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand-title">
+      🐍 NEXUSCHAIN <span>SYSTEMS_v1.0</span>
+    </div>
+    <div class="system-status">
+      <div class="status-dot"></div>
+      CLUSTER_HEALTH: ONLINE (9 NODES ACTIVE)
+    </div>
+  </header>
+
+  <div class="dashboard">
+
+    <!-- PANEL 1: WALLET & ACCOUNTS -->
+    <div class="panel glass">
+      <div class="panel-title">
+        🪙 Cuenta y Billetera (gRPC Core)
+      </div>
+      
+      <div class="form-group">
+        <label for="user-id-input">ID de Cuenta</label>
+        <input type="text" id="user-id-input" value="usr_100" placeholder="Ej. usr_100">
+      </div>
+
+      <button class="btn btn-blue" id="btn-login">
+        🔑 Conectarse y Generar JWT
+      </button>
+
+      <div class="wallet-card">
+        <div class="wallet-row">
+          <label>Identificador</label>
+          <span class="wallet-val" id="disp-user-id">usr_100 (Desconectado)</span>
+        </div>
+        <div class="wallet-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+          <label>Saldo de Cuenta (PostgreSQL ACID)</label>
+          <span class="balance-display" id="disp-balance">$0.00 USD</span>
+        </div>
+      </div>
+
+      <button class="btn btn-blue" id="btn-refresh-balance" disabled>
+        🔄 Consultar Balance
+      </button>
+
+      <div class="panel-title" style="margin-top: 15px;">
+        💸 Transferencia gRPC (ACID)
+      </div>
+
+      <div class="form-group">
+        <label for="tx-to-input">Cuenta Destinataria</label>
+        <input type="text" id="tx-to-input" placeholder="Ej. usr_200">
+      </div>
+
+      <div class="form-group">
+        <label for="tx-amount-input">Monto a Transferir</label>
+        <input type="number" id="tx-amount-input" placeholder="0.00" min="0.01" step="0.01">
+      </div>
+
+      <button class="btn btn-blue" id="btn-send-tx" disabled>
+        🚀 Procesar Débito/Crédito
+      </button>
+    </div>
+
+    <!-- PANEL 2: ORDER BOOK -->
+    <div class="panel glass">
+      <div class="panel-title purple">
+        📊 Libro de Órdenes (Go LOB Engine)
+      </div>
+
+      <div class="orderbook-container">
+        <!-- ASKS (SELLS) -->
+        <div class="orderbook-section">
+          <label style="color: var(--neon-red); margin-bottom: 5px;">Ofertas de Venta (Asks)</label>
+          <div class="ob-header">
+            <span>Precio (USD)</span>
+            <span>Cantidad</span>
+            <span style="text-align: right;">Total</span>
+          </div>
+          <div id="asks-list">
+            <div class="ob-row ask" style="justify-content: center; color: var(--text-muted);">
+              <span>Libro Vacío</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SPREAD -->
+        <div style="border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 8px 0; text-align: center; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);">
+          Spread: <span id="spread-value" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text-main);">$0.00</span>
+        </div>
+
+        <!-- BIDS (BUYS) -->
+        <div class="orderbook-section">
+          <label style="color: var(--neon-green); margin-bottom: 5px;">Ofertas de Compra (Bids)</label>
+          <div class="ob-header">
+            <span>Precio (USD)</span>
+            <span>Cantidad</span>
+            <span style="text-align: right;">Total</span>
+          </div>
+          <div id="bids-list">
+            <div class="ob-row bid" style="justify-content: center; color: var(--text-muted);">
+              <span>Libro Vacío</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-purple" id="btn-refresh-book">
+        🔄 Sincronizar Libro
+      </button>
+    </div>
+
+    <!-- PANEL 3: TRADING STATION & LOGGER -->
+    <div class="panel glass">
+      <div class="panel-title purple">
+        📈 Enviar Órdenes a NexusChain
+      </div>
+
+      <div class="form-group">
+        <label for="order-type">Tipo de Orden</label>
+        <select id="order-type">
+          <option value="BUY">COMPRA (BUY)</option>
+          <option value="SELL">VENTA (SELL)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="order-price">Precio Limite</label>
+        <input type="number" id="order-price" placeholder="100.00" min="0.01" step="0.01">
+      </div>
+
+      <div class="form-group">
+        <label for="order-qty">Cantidad</label>
+        <input type="number" id="order-qty" placeholder="1.0" min="0.01" step="0.01">
+      </div>
+
+      <button class="btn btn-purple" id="btn-place-order">
+        ⚡ Registrar Orden de Mercado
+      </button>
+
+      <div class="panel-title">
+        💾 Auditoría de Consola (Eventos)
+      </div>
+
+      <div class="terminal-console" id="console-log">
+        <div class="console-line">
+          <span class="console-time">[00:00:00]</span>
+          <span>SISTEMA INICIALIZADO. Terminal lista.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="notification-toast">
+    <span id="toast-message">Mensaje de notificación</span>
+  </div>
+
+  <script>
+    let currentToken = "";
+    let currentUserId = "";
+
+    // Elements
+    const userIdInput = document.getElementById('user-id-input');
+    const btnLogin = document.getElementById('btn-login');
+    const dispUserId = document.getElementById('disp-user-id');
+    const dispBalance = document.getElementById('disp-balance');
+    const btnRefreshBalance = document.getElementById('btn-refresh-balance');
+    const txToInput = document.getElementById('tx-to-input');
+    const txAmountInput = document.getElementById('tx-amount-input');
+    const btnSendTx = document.getElementById('btn-send-tx');
+    
+    const asksList = document.getElementById('asks-list');
+    const bidsList = document.getElementById('bids-list');
+    const spreadValue = document.getElementById('spread-value');
+    const btnRefreshBook = document.getElementById('btn-refresh-book');
+    
+    const orderType = document.getElementById('order-type');
+    const orderPrice = document.getElementById('order-price');
+    const orderQty = document.getElementById('order-qty');
+    const btnPlaceOrder = document.getElementById('btn-place-order');
+    
+    const consoleLog = document.getElementById('console-log');
+    const toast = document.getElementById('notification-toast');
+    const toastMsg = document.getElementById('toast-message');
+
+    // Utility: log to console panel
+    function sysLog(msg) {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      line.innerHTML = `<span class="console-time">[${timeStr}]</span> <span>${msg}</span>`;
+      consoleLog.appendChild(line);
+      consoleLog.scrollTop = consoleLog.scrollHeight;
+    }
+
+    // Utility: Toast notification
+    function showToast(message, type = 'info') {
+      toastMsg.innerText = message;
+      toast.className = 'glass';
+      if (type === 'success') toast.classList.add('success');
+      if (type === 'error') toast.classList.add('error');
+      
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 4000);
+    }
+
+    // Authentication: Generate Token
+    btnLogin.addEventListener('click', async () => {
+      const userId = userIdInput.value.trim();
+      if (!userId) {
+        showToast("Debes ingresar un ID de cuenta", "error");
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: `user_${userId}`, userId: userId })
+        });
+        
+        const data = await response.json();
+        if (data.accessToken) {
+          currentToken = data.accessToken;
+          currentUserId = userId;
+          dispUserId.innerText = `${userId} (Conectado)`;
+          dispUserId.style.color = 'var(--neon-blue)';
+          
+          btnRefreshBalance.removeAttribute('disabled');
+          btnSendTx.removeAttribute('disabled');
+          
+          sysLog(`JWT generado exitosamente para ${userId}.`);
+          showToast("Conexión JWT establecida", "success");
+          
+          // Auto refresh balance
+          await refreshBalance();
+        } else {
+          showToast("Error al obtener token", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Error de conexión al API Gateway", "error");
+      }
+    });
+
+    // Query Balance
+    async function refreshBalance() {
+      if (!currentToken || !currentUserId) return;
+      
+      try {
+        const response = await fetch(`/api/balance/${currentUserId}`, {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          dispBalance.innerText = `$${parseFloat(data.balance).toFixed(2)} ${data.currency}`;
+          sysLog(`Balance actualizado para ${currentUserId}: $${data.balance} ${data.currency}`);
+        } else {
+          showToast(data.error || "Error al leer balance", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Error de red al consultar balance", "error");
+      }
+    }
+
+    btnRefreshBalance.addEventListener('click', refreshBalance);
+
+    // Send transaction (gRPC)
+    btnSendTx.addEventListener('click', async () => {
+      const toAcc = txToInput.value.trim();
+      const amount = parseFloat(txAmountInput.value);
+      
+      if (!toAcc || isNaN(amount) || amount <= 0) {
+        showToast("Ingresa una cuenta de destino y un monto válido", "error");
+        return;
+      }
+
+      sysLog(`Iniciando transferencia gRPC: $${amount} -> ${toAcc}...`);
+
+      try {
+        const uuid = 'tx-' + Math.random().toString(36).substr(2, 9);
+        const response = await fetch('/api/transaction', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({
+            fromAccountId: currentUserId,
+            toAccountId: toAcc,
+            amount: amount,
+            referenceId: uuid
+          })
+        });
+
+        const data = await response.json();
+        if (response.ok && data.success) {
+          showToast(`¡Transferencia exitosa! ID: ${data.transaction_id}`, "success");
+          sysLog(`Transacción ACID completada. Ref: ${data.transaction_id}. Balance rem.: $${data.remaining_balance}`);
+          txAmountInput.value = '';
+          txToInput.value = '';
+          await refreshBalance();
+        } else {
+          showToast(data.message || "La transacción falló", "error");
+          sysLog(`Fallo en transferencia: ${data.message || 'Error desconocido'}`);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Error de red en la transacción", "error");
+      }
+    });
+
+    // Order Book Sync
+    async function refreshOrderBook() {
+      try {
+        const response = await fetch('/api/matching/book');
+        const data = await response.json();
+        
+        // Render Asks
+        asksList.innerHTML = '';
+        if (!data.asks || data.asks.length === 0) {
+          asksList.innerHTML = `<div class="ob-row ask" style="justify-content: center; color: var(--text-muted);"><span>Libro Vacío</span></div>`;
+        } else {
+          // Calculate max volume for asks depth bar
+          const maxVol = Math.max(...data.asks.map(a => a.quantity), 1);
+          data.asks.forEach(ask => {
+            const row = document.createElement('div');
+            row.className = 'ob-row ask';
+            const total = (ask.price * ask.quantity).toFixed(2);
+            const barWidth = (ask.quantity / maxVol) * 100;
+            
+            row.innerHTML = `
+              <span>$${ask.price.toFixed(2)}</span>
+              <span>${ask.quantity.toFixed(2)}</span>
+              <span style="text-align: right;">$${total}</span>
+              <div class="ob-bar" style="width: ${barWidth}%"></div>
+            `;
+            asksList.appendChild(row);
+          });
+        }
+
+        // Render Bids
+        bidsList.innerHTML = '';
+        if (!data.bids || data.bids.length === 0) {
+          bidsList.innerHTML = `<div class="ob-row bid" style="justify-content: center; color: var(--text-muted);"><span>Libro Vacío</span></div>`;
+        } else {
+          const maxVol = Math.max(...data.bids.map(b => b.quantity), 1);
+          data.bids.forEach(bid => {
+            const row = document.createElement('div');
+            row.className = 'ob-row bid';
+            const total = (bid.price * bid.quantity).toFixed(2);
+            const barWidth = (bid.quantity / maxVol) * 100;
+            
+            row.innerHTML = `
+              <span>$${bid.price.toFixed(2)}</span>
+              <span>${bid.quantity.toFixed(2)}</span>
+              <span style="text-align: right;">$${total}</span>
+              <div class="ob-bar" style="width: ${barWidth}%"></div>
+            `;
+            bidsList.appendChild(row);
+          });
+        }
+
+        // Calculate Spread
+        if (data.bids && data.bids.length > 0 && data.asks && data.asks.length > 0) {
+          const bestBid = data.bids[0].price;
+          const bestAsk = data.asks[0].price;
+          const spread = Math.abs(bestAsk - bestBid);
+          spreadValue.innerText = `$${spread.toFixed(2)}`;
+        } else {
+          spreadValue.innerText = "$0.00";
+        }
+
+        sysLog("Libro de órdenes sincronizado con el motor en Go.");
+      } catch (err) {
+        console.error(err);
+        showToast("Error de red al actualizar libro", "error");
+      }
+    }
+
+    btnRefreshBook.addEventListener('click', refreshOrderBook);
+
+    // Place trading order
+    btnPlaceOrder.addEventListener('click', async () => {
+      const type = orderType.value;
+      const price = parseFloat(orderPrice.value);
+      const qty = parseFloat(orderQty.value);
+
+      if (isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
+        showToast("Ingresa un precio y cantidad válidos", "error");
+        return;
+      }
+
+      if (!currentUserId) {
+        showToast("Debes conectarte con tu ID de cuenta primero", "error");
+        return;
+      }
+
+      sysLog(`Enviando orden ${type} | Px: $${price} | Cant: ${qty}...`);
+
+      try {
+        const orderId = 'ord-' + Math.random().toString(36).substr(2, 9);
+        const response = await fetch('/api/matching/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: orderId,
+            accountId: currentUserId,
+            type: type,
+            price: price,
+            quantity: qty
+          })
+        });
+
+        if (response.ok) {
+          showToast("Orden registrada en el motor", "success");
+          sysLog(`Orden ${orderId} aceptada por el Matching Engine.`);
+          orderPrice.value = '';
+          orderQty.value = '';
+          // Refresh book automatically
+          setTimeout(refreshOrderBook, 800);
+        } else {
+          showToast("Error al registrar orden", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Error de conexión con el Matching Engine", "error");
+      }
+    });
+
+    // Auto poll orderbook every 5 seconds to keep it fresh
+    setInterval(refreshOrderBook, 5000);
+    // Initial fetch
+    refreshOrderBook();
+  </script>
+</body>
+</html>

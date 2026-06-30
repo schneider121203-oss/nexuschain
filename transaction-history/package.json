@@ -1,0 +1,14 @@
+{
+  "name": "nexuschain-transaction-history",
+  "version": "1.0.0",
+  "description": "Historical audit and immutable records database writer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cassandra-driver": "^4.6.4",
+    "dotenv": "^16.0.3",
+    "kafkajs": "^2.2.4"
+  }
+}

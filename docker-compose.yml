@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # Database for strict balance storage (ACID)
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus_postgres
+    environment:
+      POSTGRES_DB: nexuschain_db
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: nexus_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexuschain_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Message bus coordinator
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: nexus_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # Event bus (Kafka)
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: nexus_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NoSQL Database for immutable audit trail and historical logs
+  cassandra:
+    image: cassandra:4.1
+    container_name: nexus_cassandra
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # --- application services ---
+
+  balance-service:
+    build:
+      context: ./balance-service
+      dockerfile: Dockerfile
+    container_name: nexus_balance_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+      - "50051:50051"
+    environment:
+      - spring.datasource.url=jdbc:postgresql://postgres:5432/nexuschain_db
+      - spring.datasource.username=nexus_user
+      - spring.datasource.password=nexus_password
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: nexus_api_gateway
+    depends_on:
+      - balance-service
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - JWT_SECRET=nexuschain_super_secret_key_change_in_production
+      - BALANCE_SERVICE_URL=balance-service:50051
+      - MATCHING_SERVICE_URL=matching-service:8082
+
+  matching-service:
+    build:
+      context: ./matching-service
+      dockerfile: Dockerfile
+    container_name: nexus_matching_service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+
+  transaction-history:
+    build:
+      context: ./transaction-history
+      dockerfile: Dockerfile
+    container_name: nexus_transaction_history
+    depends_on:
+      kafka:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - CASSANDRA_CONTACT_POINTS=cassandra
+      - CASSANDRA_LOCAL_DATA_CENTER=datacenter1
+      - CASSANDRA_KEYSPACE=nexuschain
+
+  consensus-service:
+    build:
+      context: ./consensus-service
+      dockerfile: Dockerfile
+    container_name: nexus_consensus_service
+
+volumes:
+  postgres_data:
+  cassandra_data:

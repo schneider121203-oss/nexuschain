@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package nexuschain.balance;
+
+option java_multiple_files = true;
+option java_package = "com.nexuschain.balance.grpc";
+option java_outer_classname = "BalanceProto";
+
+service BalanceService {
+  rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+  rpc ProcessTransaction (TransactionRequest) returns (TransactionResponse);
+}
+
+message GetBalanceRequest {
+  string account_id = 1;
+}
+
+message GetBalanceResponse {
+  string account_id = 1;
+  double balance = 2;
+  string currency = 3;
+}
+
+message TransactionRequest {
+  string from_account_id = 1;
+  string to_account_id = 2;
+  double amount = 3;
+  string reference_id = 4;
+}
+
+message TransactionResponse {
+  bool success = 1;
+  string message = 2;
+  string transaction_id = 3;
+  double remaining_balance = 4;
+}
