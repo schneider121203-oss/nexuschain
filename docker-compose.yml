@@ -1,6 +1,10 @@
 version: '3.8'
 
 services:
+  # ─────────────────────────────────────────────
+  # INFRASTRUCTURE — Databases & Message Bus
+  # ─────────────────────────────────────────────
+
   # Database for strict balance storage (ACID)
   postgres:
     image: postgres:15-alpine
@@ -10,7 +14,7 @@ services:
       POSTGRES_USER: nexus_user
       POSTGRES_PASSWORD: nexus_password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -45,11 +49,31 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Creates Kafka topics at startup (primary + DLQ + Saga topics)
+  # Implements Gap 3.5 (DLQ) and Gap 3.2 (Saga) from plan_tecnico_nexuschain.md
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.3.0
+    container_name: nexus_kafka_setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo 'Creating Kafka topics...'
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions-topic --partitions 6 --replication-factor 1 --config retention.ms=604800000
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions-topic.dlq --partitions 3 --replication-factor 1 --config retention.ms=604800000
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic saga.commands --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic saga.events --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        echo 'Kafka topics created: transactions-topic + dlq + saga.commands + saga.events'
+    restart: "no"
 
   # NoSQL Database for immutable audit trail and historical logs
   cassandra:
@@ -65,7 +89,77 @@ services:
       timeout: 10s
       retries: 5
 
-  # --- application services ---
+  # ─────────────────────────────────────────────
+  # OBSERVABILITY STACK — OTel + Jaeger + Prometheus + Grafana
+  # Implements §4.3 of plan_tecnico_nexuschain.md
+  # ─────────────────────────────────────────────
+
+  # OpenTelemetry Collector — receives traces/metrics from all services,
+  # forwards traces to Jaeger and metrics to Prometheus
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    container_name: nexus_otel_collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver (services push here)
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8889:8889"   # Prometheus metrics exporter (Prometheus scrapes this)
+    depends_on:
+      - jaeger
+
+  # Jaeger — distributed tracing UI
+  # Access: http://localhost:16686
+  # Demo tip: submit a transaction, then search for 'api-gateway' service in Jaeger
+  # to see the full trace: Gateway → Balance gRPC → response
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: nexus_jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "14250:14250"   # gRPC endpoint (OTel Collector sends traces here)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  # Prometheus — time-series metrics database
+  # Access: http://localhost:9090
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: nexus_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  # Grafana — metrics dashboards
+  # Access: http://localhost:3001 (admin / admin)
+  # Demo tip: import community dashboard ID 17175 (OTel Collector) or 1860 (Node Exporter)
+  # to see nexuschain.matching_orders_total and nexuschain.balance_debit_latency_seconds
+  grafana:
+    image: grafana/grafana:10.4.4
+    container_name: nexus_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # ─────────────────────────────────────────────
+  # APPLICATION SERVICES
+  # ─────────────────────────────────────────────
 
   balance-service:
     build:
@@ -90,6 +184,10 @@ services:
     container_name: nexus_api_gateway
     depends_on:
       - balance-service
+      - saga-orchestrator
+      - consensus-service
+      - transaction-history
+      - otel-collector
     ports:
       - "8080:8080"
     environment:
@@ -97,6 +195,11 @@ services:
       - JWT_SECRET=nexuschain_super_secret_key_change_in_production
       - BALANCE_SERVICE_URL=balance-service:50051
       - MATCHING_SERVICE_URL=matching-service:8082
+      - SAGA_ORCHESTRATOR_URL=saga-orchestrator:8083
+      - CONSENSUS_SERVICE_URL=consensus-service:8084
+      - TRANSACTION_HISTORY_URL=transaction-history:8085
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - NODE_ENV=production
 
   matching-service:
     build:
@@ -106,10 +209,16 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     ports:
       - "8082:8082"
     environment:
       - KAFKA_BROKER=kafka:9092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=matching-service
 
   transaction-history:
     build:
@@ -119,6 +228,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
       cassandra:
         condition: service_healthy
     environment:
@@ -132,7 +243,48 @@ services:
       context: ./consensus-service
       dockerfile: Dockerfile
     container_name: nexus_consensus_service
+    ports:
+      - "8084:8084"
+
+  # 🎭 Saga Orchestrator — Distributed Transaction Coordinator
+  # Implements the explicit Saga pattern (Gap 3.2) from plan_tecnico_nexuschain.md
+  # State machine: PENDING → BALANCE_LOCKED → MATCHED → SETTLED (or COMPENSATING → ROLLED_BACK)
+  # Access the admin API at http://localhost:8083
+  saga-orchestrator:
+    build:
+      context: ./saga-orchestrator
+      dockerfile: Dockerfile
+    container_name: nexus_saga_orchestrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+      balance-service:
+        condition: service_started
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=nexuschain_db
+      - DB_USER=nexus_user
+      - DB_PASSWORD=nexus_password
+      - KAFKA_BROKERS=kafka:9092
+      - BALANCE_SERVICE_URL=balance-service:50051
+      - SAGA_TIMEOUT_MINUTES=5
+      - SAGA_WATCHDOG_INTERVAL_MS=60000
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
   cassandra_data:
+  prometheus_data:
+  grafana_data:

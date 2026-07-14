@@ -7,4 +7,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o consensus-service .
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/consensus-service .
+EXPOSE 8084
 CMD ["./consensus-service"]

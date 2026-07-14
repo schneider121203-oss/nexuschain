@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -294,6 +296,65 @@ func routeNetwork() {
 	}
 }
 
+type NodeStatus struct {
+	ID    int    `json:"id"`
+	Role  string `json:"role"`
+	Term  int    `json:"term"`
+	Alive bool   `json:"alive"`
+}
+
+type ConsensusStatusResponse struct {
+	LeaderID int          `json:"leaderId"`
+	Term     int          `json:"term"`
+	Nodes    []NodeStatus `json:"nodes"`
+}
+
+func startStatusServer() {
+	http.HandleFunc("/consensus/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		var statusResponse ConsensusStatusResponse
+		statusResponse.Nodes = []NodeStatus{}
+
+		leaderID := -1
+		maxTerm := 0
+
+		for i := 1; i <= 3; i++ {
+			node := nodes[i]
+			if node == nil {
+				continue
+			}
+			node.mu.Lock()
+			
+			statusResponse.Nodes = append(statusResponse.Nodes, NodeStatus{
+				ID:    node.id,
+				Role:  string(node.role),
+				Term:  node.term,
+				Alive: node.alive,
+			})
+
+			if node.role == Leader && node.alive {
+				leaderID = node.id
+			}
+			if node.term > maxTerm {
+				maxTerm = node.term
+			}
+			node.mu.Unlock()
+		}
+
+		statusResponse.LeaderID = leaderID
+		statusResponse.Term = maxTerm
+
+		json.NewEncoder(w).Encode(statusResponse)
+	})
+
+	fmt.Println("📢 Consensus Status Server listening on port 8084...")
+	if err := http.ListenAndServe(":8084", nil); err != nil {
+		fmt.Printf("❌ Failed to start Consensus Status Server: %v\n", err)
+	}
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -308,6 +369,9 @@ func main() {
 
 	// Route network messages in background
 	go routeNetwork()
+
+	// Start status HTTP server in background for the frontend
+	go startStatusServer()
 
 	// Let the network run for a bit to establish a leader
 	time.Sleep(5 * time.Second)
