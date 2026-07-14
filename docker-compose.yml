@@ -30,6 +30,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_OPTS: "-Xmx128M -Xms128M"
     ports:
       - "2181:2181"
 
@@ -50,6 +51,7 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_OPTS: "-Xmx256M -Xms256M"
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
@@ -83,6 +85,9 @@ services:
       - "9042:9042"
     volumes:
       - cassandra_data:/var/lib/cassandra
+    environment:
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
       interval: 15s
@@ -189,7 +194,7 @@ services:
       - transaction-history
       - otel-collector
     ports:
-      - "8080:8080"
+      - "8089:8080"
     environment:
       - PORT=8080
       - JWT_SECRET=nexuschain_super_secret_key_change_in_production

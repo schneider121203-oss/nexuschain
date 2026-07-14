@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-// We target the API Gateway (port 8080)
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8080';
+// En desarrollo: el proxy de Vite redirige /api/* a http://localhost:8089
+// En producción: Express sirve el frontend y el backend desde el mismo origen
+const API_URL = '';
 
 export const apiClient = axios.create({
   baseURL: API_URL,
